@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exercice : Associer phrases et images</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 30px 20px;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 25px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 14px 30px rgba(0,0,0,0.3);
+        }
+        .card img {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+            background: #eee;
+        }
+        .card-body {
+            padding: 18px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 32px;
+            height: 32px;
+            line-height: 32px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .phrase {
+            font-size: 1.05em;
+            line-height: 1.5;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        .keyword {
+            margin-top: 12px;
+            font-size: 0.85em;
+            color: #888;
+            font-style: italic;
+        }
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: rgba(255,255,255,0.85);
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Exercice : Associer chaque phrase à une image</h1>
+    <p class="subtitle">20 phrases illustrées — Images libres de droits (Loremflickr / Flickr CC)</p>
+
+    <div class="grid">
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/hostel,bedroom" alt="Auberge">
+            <div class="card-body">
+                <span class="number">1</span>
+                <p class="phrase">Nous avons réservé une chambre dans une auberge ce week-end.</p>
+                <p class="keyword">auberge / chambre</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/refund,money,return" alt="Remboursement">
+            <div class="card-body">
+                <span class="number">2</span>
+                <p class="phrase">J'ai demandé un remboursement pour l'article défectueux que j'ai reçu.</p>
+                <p class="keyword">remboursement</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/pottery,clay,wheel" alt="Poterie">
+            <div class="card-body">
+                <span class="number">3</span>
+                <p class="phrase">Il façonne la poterie.</p>
+                <p class="keyword">potier / argile</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/restart,computer,reboot" alt="Redémarrer">
+            <div class="card-body">
+                <span class="number">4</span>
+                <p class="phrase">Si ça coince, redémarre l'appareil.</p>
+                <p class="keyword">redémarrage / panne</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/formal,suit,tuxedo" alt="Tenue formelle">
+            <div class="card-body">
+                <span class="number">5</span>
+                <p class="phrase">Cette tenue est plus formelle.</p>
+                <p class="keyword">costume / élégant</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/unripe,green,fruit" alt="Fruit pas mûr">
+            <div class="card-body">
+                <span class="number">6</span>
+                <p class="phrase">Ce fruit manque de maturité.</p>
+                <p class="keyword">fruit vert / pas mûr</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/helping,hand,teamwork" alt="Coup de main">
+            <div class="card-body">
+                <span class="number">7</span>
+                <p class="phrase">Peux-tu me donner un coup de main ?</p>
+                <p class="keyword">aide / entraide</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/surprised,shocked,face" alt="Surprise">
+            <div class="card-body">
+                <span class="number">8</span>
+                <p class="phrase">Les résultats surprennent tout le monde. (surprendre)</p>
+                <p class="keyword">surprise / étonnement</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/calendar,waiting,clock" alt="Attente">
+            <div class="card-body">
+                <span class="number">9</span>
+                <p class="phrase">Je ne recevrai pas de réponse avant demain.</p>
+                <p class="keyword">attente / demain</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/empty,shelf,bookstore" alt="Rupture de stock">
+            <div class="card-body">
+                <span class="number">10</span>
+                <p class="phrase">J'ai voulu acheter ce livre, mais il était en rupture de stock.</p>
+                <p class="keyword">étagère vide / livre</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/dark,clouds,storm" alt="Nuages menaçants">
+            <div class="card-body">
+                <span class="number">11</span>
+                <p class="phrase">Il est vraisemblable qu'il pleuve cet après-midi, les nuages sont menaçants.</p>
+                <p class="keyword">nuages sombres / orage</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/coal,fire,heating" alt="Charbon">
+            <div class="card-body">
+                <span class="number">12</span>
+                <p class="phrase">Ils utilisent du charbon pour chauffer.</p>
+                <p class="keyword">charbon / chauffage</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/sun,winter,cold,snow" alt="Soleil et froid">
+            <div class="card-body">
+                <span class="number">13</span>
+                <p class="phrase">Le soleil brille, pourtant il fait froid.</p>
+                <p class="keyword">soleil hivernal</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/exam,fail,student,sad" alt="Échec scolaire">
+            <div class="card-body">
+                <span class="number">14</span>
+                <p class="phrase">Elle a étudié, pourtant elle a échoué.</p>
+                <p class="keyword">étudiante / échec</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/elderly,grandparent,respect" alt="Aînés">
+            <div class="card-body">
+                <span class="number">15</span>
+                <p class="phrase">Il est impératif de respecter les aînés.</p>
+                <p class="keyword">personnes âgées / respect</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/medicine,pills,medication" alt="Médicament">
+            <div class="card-body">
+                <span class="number">16</span>
+                <p class="phrase">Ce médicament doit être pris impérativement.</p>
+                <p class="keyword">médicament / pilules</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/medal,gold,award,courage" alt="Médaille">
+            <div class="card-body">
+                <span class="number">17</span>
+                <p class="phrase">Cette médaille est un témoignage de son courage.</p>
+                <p class="keyword">médaille / récompense</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/glass,water,drink" alt="Verre d'eau">
+            <div class="card-body">
+                <span class="number">18</span>
+                <p class="phrase">Ramène-moi un verre d'eau, s'il te plaît.</p>
+                <p class="keyword">verre d'eau</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/price,tag,shopping,comparison" alt="Différence de prix">
+            <div class="card-body">
+                <span class="number">19</span>
+                <p class="phrase">Pourquoi les prix de ces deux produits sont-ils autant différents ?</p>
+                <p class="keyword">étiquette de prix</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <img src="https://loremflickr.com/600/400/letter,mail,envelope,document" alt="Réception document">
+            <div class="card-body">
+                <span class="number">20</span>
+                <p class="phrase">J'espère bonne réception du document.</p>
+                <p class="keyword">courrier / document</p>
+            </div>
+        </div>
+
+    </div>
+
+    <footer>
+        Exercice de vocabulaire FLE — Images générées dynamiquement via Loremflickr (Flickr Creative Commons)
+    </footer>
+</body>
+</html>
