@@ -2,39 +2,43 @@
 Image Generation From Sentences (Unsplash / Pexels)
 ====================================================
 
-Pour chaque phrase en francais, ce script :
+Pour chaque phrase en francais :
   1. Traduit la phrase en anglais
-  2. Extrait les mots-cles principaux (en retirant les mots vides)
-  3. Telecharge une photo correspondante depuis Unsplash ou Pexels via leur
-     API officielle
-  4. Sauvegarde l'image dans le dossier `outputs/`
+  2. Extrait les mots-cles principaux
+  3. Telecharge une photo via Unsplash ou Pexels (API officielle)
+  4. Sauvegarde l'image dans `outputs/`
 
-IMPORTANT : Une cle API gratuite est necessaire (l'ancienne URL publique
-source.unsplash.com a ete arretee en 2024). L'inscription prend 2 minutes.
-
-  --provider unsplash  (DEFAUT, recommande)
-      Inscription gratuite : https://unsplash.com/developers
-      -> Cree une nouvelle application "Demo" -> recopie l'Access Key
-      Limite gratuite : 50 requetes par heure
-
-  --provider pexels
-      Inscription gratuite : https://www.pexels.com/api/
-      Limite gratuite : 200 requetes par heure
+Cle API gratuite requise (2 minutes d'inscription) :
+  - Unsplash : https://unsplash.com/developers   (50 req/h)
+  - Pexels   : https://www.pexels.com/api/       (200 req/h)
 
 Fournir la cle :
-  - via la variable d'environnement UNSPLASH_ACCESS_KEY ou PEXELS_API_KEY
-  - ou via l'argument --api-key TA_CLE
+  set UNSPLASH_ACCESS_KEY=ta_cle    (ou PEXELS_API_KEY)
+  ou : --api-key ta_cle
 
 Dependances :
-    pip install -r requirements.txt   (requests, pillow, deep-translator)
+  pip install -r requirements.txt
 
-Utilisation :
-    set UNSPLASH_ACCESS_KEY=ta_cle_ici
-    python image_generation.py
+USAGES COURANTS
+---------------
 
-    python image_generation.py --provider pexels --api-key TA_CLE
-    python image_generation.py "un chat roux qui dort" "coucher de soleil"
-    python image_generation.py --file mes_phrases.txt
+  # Telecharger toutes les phrases (saute celles deja faites)
+  python image_generation.py
+
+  # Forcer le re-telechargement de TOUT
+  python image_generation.py --force
+
+  # Re-generer UNIQUEMENT la phrase n.4 avec une autre photo
+  python image_generation.py --phrase 4 --page 2
+
+  # Re-generer la 4 avec mes propres mots-cles
+  python image_generation.py --phrase 4 --query "old library books"
+
+  # Lister les phrases avec leur numero
+  python image_generation.py --list
+
+  # Changer de fournisseur
+  python image_generation.py --provider pexels
 """
 
 import argparse
@@ -61,17 +65,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = SCRIPT_DIR / "outputs"
 DEFAULT_PHRASES_FILE = SCRIPT_DIR / "phrases.txt"
 
-REQUEST_TIMEOUT = 60          # secondes
-DELAY_BETWEEN_REQUESTS = 1    # seconde
+REQUEST_TIMEOUT = 60
+DELAY_BETWEEN_REQUESTS = 1
 
-# Liste etendue de mots vides en anglais (stopwords).
-# On les retire pour ne garder que les mots porteurs de sens.
 STOPWORDS_EN = {
-    # articles, prepositions, conjonctions
     "a", "an", "the", "of", "in", "on", "at", "with", "and", "or", "but",
     "to", "for", "from", "by", "as", "into", "over", "under", "about",
     "between", "through", "during", "before", "after", "above", "below",
-    # pronoms et possessifs
     "i", "me", "my", "mine", "myself", "we", "us", "our", "ours",
     "you", "your", "yours", "yourself",
     "he", "him", "his", "himself", "she", "her", "hers", "herself",
@@ -79,7 +79,6 @@ STOPWORDS_EN = {
     "this", "that", "these", "those", "who", "whom", "whose", "which",
     "what", "where", "when", "why", "how",
     "one", "ones", "some", "any", "all", "each", "every", "no", "none",
-    # verbes auxiliaires et tres frequents
     "is", "are", "was", "were", "be", "been", "being", "am",
     "have", "has", "had", "having",
     "do", "does", "did", "doing",
@@ -93,10 +92,10 @@ STOPWORDS_EN = {
     "decided", "showed", "show", "shown", "seen", "see",
 }
 
-# Mots qui ne donnent jamais de bonnes images, on les exclut explicitement
 LOW_VALUE_WORDS = {
     "thing", "things", "something", "someone", "everything", "nothing",
     "way", "ways", "kind", "type", "fact", "case", "lot", "lots",
+    "people", "person",
 }
 
 
@@ -121,16 +120,12 @@ def translate_fr_to_en(text: str) -> str:
 
 
 def extract_keywords(text_en: str, max_keywords: int = 4) -> list:
-    """Extrait les mots-cles porteurs de sens d'une phrase anglaise."""
     words = re.findall(r"[A-Za-z]+", text_en.lower())
     keywords = [
         w for w in words
-        if w not in STOPWORDS_EN
-        and w not in LOW_VALUE_WORDS
-        and len(w) > 2
+        if w not in STOPWORDS_EN and w not in LOW_VALUE_WORDS and len(w) > 2
     ]
-    seen = set()
-    unique = []
+    seen, unique = set(), []
     for w in keywords:
         if w not in seen:
             seen.add(w)
@@ -144,34 +139,35 @@ def slugify(text: str, max_len: int = 60) -> str:
     return text[:max_len] or "image"
 
 
+def output_path_for(idx: int, fr: str) -> Path:
+    return OUTPUT_DIR / f"{idx:02d}_{slugify(fr)}.jpg"
+
+
 # ---------------------------------------------------------------------------
-# Fournisseur 1 : Unsplash API officielle
+# Fournisseurs
 # ---------------------------------------------------------------------------
 
 def download_from_unsplash(
     query: str,
     output_path: Path,
     access_key: str,
+    page: int = 1,
     timeout: int = REQUEST_TIMEOUT,
 ) -> Path:
-    """Recherche puis telecharge la 1ere photo Unsplash correspondant a la requete."""
+    """Telecharge la photo Unsplash a la position `page` pour la requete."""
     if not access_key:
-        raise ValueError(
-            "Cle Unsplash manquante. Inscris-toi sur https://unsplash.com/developers "
-            "puis fournis ta cle via UNSPLASH_ACCESS_KEY ou --api-key."
-        )
+        raise ValueError("Cle Unsplash manquante.")
 
-    search_url = "https://api.unsplash.com/search/photos"
-    headers = {"Authorization": f"Client-ID {access_key}"}
-    params = {"query": query, "per_page": 1, "orientation": "landscape"}
-
-    r = requests.get(search_url, headers=headers, params=params, timeout=timeout)
+    r = requests.get(
+        "https://api.unsplash.com/search/photos",
+        headers={"Authorization": f"Client-ID {access_key}"},
+        params={"query": query, "per_page": 1, "page": page, "orientation": "landscape"},
+        timeout=timeout,
+    )
     r.raise_for_status()
-    data = r.json()
-
-    results = data.get("results", [])
+    results = r.json().get("results", [])
     if not results:
-        raise RuntimeError(f"Aucune photo trouvee sur Unsplash pour : {query!r}")
+        raise RuntimeError(f"Aucune photo Unsplash pour {query!r} (page {page}).")
 
     photo = results[0]
     photo_url = photo["urls"].get("regular") or photo["urls"]["small"]
@@ -179,125 +175,117 @@ def download_from_unsplash(
 
     img = requests.get(photo_url, timeout=timeout)
     img.raise_for_status()
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         f.write(img.content)
-
-    print(f"    Photo par : {photographer} (via Unsplash)")
+    print(f"    Photo par : {photographer} (Unsplash, page {page})")
     return output_path
 
-
-# ---------------------------------------------------------------------------
-# Fournisseur 2 : Pexels API officielle
-# ---------------------------------------------------------------------------
 
 def download_from_pexels(
     query: str,
     output_path: Path,
     api_key: str,
+    page: int = 1,
     timeout: int = REQUEST_TIMEOUT,
 ) -> Path:
-    """Recherche puis telecharge la 1ere photo Pexels correspondant a la requete."""
+    """Telecharge la photo Pexels a la position `page` pour la requete."""
     if not api_key:
-        raise ValueError(
-            "Cle Pexels manquante. Inscris-toi sur https://www.pexels.com/api/ "
-            "puis fournis ta cle via PEXELS_API_KEY ou --api-key."
-        )
+        raise ValueError("Cle Pexels manquante.")
 
-    search_url = "https://api.pexels.com/v1/search"
-    headers = {"Authorization": api_key}
-    params = {"query": query, "per_page": 1, "orientation": "landscape"}
-
-    r = requests.get(search_url, headers=headers, params=params, timeout=timeout)
+    r = requests.get(
+        "https://api.pexels.com/v1/search",
+        headers={"Authorization": api_key},
+        params={"query": query, "per_page": 1, "page": page, "orientation": "landscape"},
+        timeout=timeout,
+    )
     r.raise_for_status()
-    data = r.json()
-
-    photos = data.get("photos", [])
+    photos = r.json().get("photos", [])
     if not photos:
-        raise RuntimeError(f"Aucune photo trouvee sur Pexels pour : {query!r}")
+        raise RuntimeError(f"Aucune photo Pexels pour {query!r} (page {page}).")
 
     photo_url = photos[0]["src"].get("large2x") or photos[0]["src"]["large"]
     photographer = photos[0].get("photographer", "inconnu")
 
     img = requests.get(photo_url, timeout=timeout)
     img.raise_for_status()
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         f.write(img.content)
-
-    print(f"    Photo par : {photographer} (via Pexels)")
+    print(f"    Photo par : {photographer} (Pexels, page {page})")
     return output_path
 
 
-# ---------------------------------------------------------------------------
-# Boucle principale
-# ---------------------------------------------------------------------------
-
-def process_phrases(
-    phrases: list,
+def download_one(
+    query: str,
+    output_path: Path,
     provider: str,
     api_key: str,
+    page: int = 1,
+) -> Path:
+    if provider == "unsplash":
+        return download_from_unsplash(query, output_path, api_key, page=page)
+    if provider == "pexels":
+        return download_from_pexels(query, output_path, api_key, page=page)
+    raise ValueError(f"Fournisseur inconnu : {provider}")
+
+
+# ---------------------------------------------------------------------------
+# Traitement d'une phrase
+# ---------------------------------------------------------------------------
+
+def process_one_phrase(
+    idx: int,
+    fr: str,
+    total: int,
+    provider: str,
+    api_key: str,
+    page: int = 1,
+    custom_query: str = "",
+    skip_existing: bool = False,
     show: bool = False,
-) -> None:
-    if not phrases:
-        print("Aucune phrase a traiter.")
-        return
+) -> bool:
+    """Traite une seule phrase. Retourne True si telechargee."""
+    output_path = output_path_for(idx, fr)
+    print(f"[{idx}/{total}] {fr}")
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Fournisseur : {provider}")
-    print(f"Dossier de sortie : {OUTPUT_DIR}")
-    print(f"{len(phrases)} phrase(s) a traiter.\n")
+    if skip_existing and output_path.exists():
+        print(f"    Deja presente, ignoree : {output_path.name}")
+        print(f"    (--force pour re-telecharger)\n")
+        return False
 
-    success_count = 0
-
-    for idx, fr in enumerate(phrases, start=1):
-        print(f"[{idx}/{len(phrases)}] {fr}")
-
+    if custom_query:
+        query = custom_query
+        print(f"    Requete personnalisee : {query}")
+    else:
         en = translate_fr_to_en(fr)
         keywords = extract_keywords(en)
-        # Si l'extraction donne trop peu de mots-cles, on retombe sur la phrase EN entiere
         query = " ".join(keywords) if keywords else en
         print(f"    Prompt EN : {en}")
         print(f"    Requete   : {query}")
 
-        filename = f"{idx:02d}_{slugify(fr)}.jpg"
-        output_path = OUTPUT_DIR / filename
-
-        try:
-            if provider == "unsplash":
-                download_from_unsplash(query, output_path, access_key=api_key)
-            elif provider == "pexels":
-                download_from_pexels(query, output_path, api_key=api_key)
-            else:
-                raise ValueError(f"Fournisseur inconnu : {provider}")
-
-            print(f"    Sauvegardee : {output_path}\n")
-            success_count += 1
-
-            if show:
-                try:
-                    Image.open(output_path).show()
-                except Exception as e:
-                    print(f"    [Avertissement] Impossible d'afficher : {e}")
-
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response is not None else "?"
-            if status == 401:
-                print(f"    [Erreur 401] Cle API invalide ou non autorisee.\n")
-            elif status == 403:
-                print(f"    [Erreur 403] Quota depasse ou cle non valide.\n")
-            else:
-                print(f"    [Erreur HTTP {status}] {e}\n")
-        except requests.exceptions.RequestException as e:
-            print(f"    [Erreur reseau] {e}\n")
-        except Exception as e:
-            print(f"    [Erreur] {e}\n")
-
-        time.sleep(DELAY_BETWEEN_REQUESTS)
-
-    print(f"Termine : {success_count}/{len(phrases)} image(s) telechargee(s) dans {OUTPUT_DIR}")
+    try:
+        download_one(query, output_path, provider, api_key, page=page)
+        print(f"    Sauvegardee : {output_path}\n")
+        if show:
+            try:
+                Image.open(output_path).show()
+            except Exception as e:
+                print(f"    [Avertissement] Affichage impossible : {e}")
+        return True
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "?"
+        if status == 401:
+            print("    [Erreur 401] Cle API invalide.\n")
+        elif status == 403:
+            print("    [Erreur 403] Quota depasse ou cle invalide.\n")
+        else:
+            print(f"    [Erreur HTTP {status}] {e}\n")
+    except requests.exceptions.RequestException as e:
+        print(f"    [Erreur reseau] {e}\n")
+    except Exception as e:
+        print(f"    [Erreur] {e}\n")
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -305,74 +293,143 @@ def process_phrases(
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+    p = argparse.ArgumentParser(
         description="Telecharge une photo (Unsplash / Pexels) par phrase.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("phrases", nargs="*", help="Phrases (sinon lit --file)")
-    parser.add_argument(
+    p.add_argument("phrases", nargs="*", help="Phrases en argument (sinon lit --file)")
+    p.add_argument(
         "--file", "-f",
-        type=Path,
-        default=DEFAULT_PHRASES_FILE,
-        help=f"Fichier (defaut : {DEFAULT_PHRASES_FILE.name})",
+        type=Path, default=DEFAULT_PHRASES_FILE,
+        help=f"Fichier phrases (defaut : {DEFAULT_PHRASES_FILE.name})",
     )
-    parser.add_argument(
+    p.add_argument(
         "--provider", "-p",
-        choices=["unsplash", "pexels"],
-        default="unsplash",
+        choices=["unsplash", "pexels"], default="unsplash",
         help="Source des images (defaut : unsplash)",
     )
-    parser.add_argument(
-        "--api-key",
-        default="",
-        help="Cle API. Sinon lue depuis UNSPLASH_ACCESS_KEY ou PEXELS_API_KEY.",
+    p.add_argument("--api-key", default="", help="Cle API (sinon variable d'env)")
+
+    # Selection / regeneration
+    p.add_argument(
+        "--phrase", "-n",
+        type=int, default=None,
+        help="Traiter UNIQUEMENT la phrase numero N (1-base)",
     )
-    parser.add_argument("--show", action="store_true", help="Ouvrir chaque image")
-    return parser.parse_args()
+    p.add_argument(
+        "--page",
+        type=int, default=1,
+        help="Numero de la photo a recuperer (defaut 1). "
+             "Augmente pour obtenir une photo differente sur la meme requete.",
+    )
+    p.add_argument(
+        "--query", "-q",
+        default="",
+        help="Requete personnalisee (remplace l'extraction automatique).",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-telecharger meme si l'image existe deja",
+    )
+    p.add_argument(
+        "--list",
+        action="store_true",
+        help="Lister les phrases avec leur numero, sans rien telecharger",
+    )
+    p.add_argument("--show", action="store_true", help="Ouvrir chaque image")
+    return p.parse_args()
 
 
 def resolve_api_key(provider: str, cli_key: str) -> str:
-    """Resout la cle API selon le fournisseur : argument CLI puis variables d'environnement."""
     if cli_key:
         return cli_key
-    if provider == "unsplash":
-        return os.environ.get("UNSPLASH_ACCESS_KEY", "")
-    if provider == "pexels":
-        return os.environ.get("PEXELS_API_KEY", "")
-    return ""
+    return os.environ.get(
+        "UNSPLASH_ACCESS_KEY" if provider == "unsplash" else "PEXELS_API_KEY",
+        "",
+    )
+
+
+def load_phrases(args) -> list:
+    if args.phrases:
+        print(f"Phrases en argument : {len(args.phrases)}\n")
+        return args.phrases
+    if not args.file.exists():
+        print(f"[Erreur] Fichier introuvable : {args.file}", file=sys.stderr)
+        return []
+    phrases = load_phrases_from_file(args.file)
+    print(f"Phrases chargees depuis {args.file.name} : {len(phrases)}\n")
+    return phrases
 
 
 def main() -> int:
     args = parse_args()
 
-    if args.phrases:
-        phrases = args.phrases
-        print(f"Phrases recues en argument : {len(phrases)}\n")
-    else:
-        if not args.file.exists():
-            print(f"[Erreur] Fichier introuvable : {args.file}", file=sys.stderr)
-            return 1
-        phrases = load_phrases_from_file(args.file)
-        print(f"Phrases chargees depuis {args.file.name} : {len(phrases)}\n")
+    phrases = load_phrases(args)
+    if not phrases:
+        return 1
+
+    if args.list:
+        print("Phrases disponibles :")
+        for i, p in enumerate(phrases, start=1):
+            path = output_path_for(i, p)
+            mark = "[OK]" if path.exists() else "[--]"
+            print(f"  {mark} {i:>2}. {p}")
+        print("\nUtilise --phrase N pour (re)generer la phrase numero N.")
+        return 0
 
     api_key = resolve_api_key(args.provider, args.api_key)
     if not api_key:
         env_var = "UNSPLASH_ACCESS_KEY" if args.provider == "unsplash" else "PEXELS_API_KEY"
-        signup_url = (
-            "https://unsplash.com/developers"
-            if args.provider == "unsplash"
-            else "https://www.pexels.com/api/"
-        )
+        signup = ("https://unsplash.com/developers"
+                  if args.provider == "unsplash"
+                  else "https://www.pexels.com/api/")
         print(f"[Erreur] Cle API manquante pour --provider {args.provider}.", file=sys.stderr)
-        print(f"  1. Inscris-toi (gratuit) : {signup_url}")
-        print(f"  2. Recopie ta cle, puis dans CMD :")
-        print(f"        set {env_var}=ta_cle_ici")
-        print(f"        python image_generation.py")
-        print(f"     OU :  python image_generation.py --api-key ta_cle_ici")
+        print(f"  1. Inscription gratuite : {signup}")
+        print(f"  2. set {env_var}=ta_cle  (puis relancer)")
+        print(f"     OU : --api-key ta_cle")
         return 1
 
-    process_phrases(phrases, provider=args.provider, api_key=api_key, show=args.show)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Fournisseur : {args.provider}")
+    print(f"Dossier de sortie : {OUTPUT_DIR}\n")
+
+    # Mode 1 : une phrase precise
+    if args.phrase is not None:
+        if args.phrase < 1 or args.phrase > len(phrases):
+            print(f"[Erreur] --phrase {args.phrase} hors limites (1..{len(phrases)})",
+                  file=sys.stderr)
+            return 1
+        idx = args.phrase
+        fr = phrases[idx - 1]
+        # En mode --phrase, on suppose qu'on veut retelecharger : skip_existing=False
+        ok = process_one_phrase(
+            idx=idx, fr=fr, total=len(phrases),
+            provider=args.provider, api_key=api_key,
+            page=args.page, custom_query=args.query,
+            skip_existing=False, show=args.show,
+        )
+        print(f"Termine : {'1' if ok else '0'}/1 image telechargee.")
+        return 0
+
+    # Mode 2 : toutes les phrases
+    skip_existing = not args.force
+    if skip_existing:
+        print("(Saute les images deja presentes. --force pour tout retelecharger.)\n")
+
+    success = 0
+    for i, fr in enumerate(phrases, start=1):
+        if process_one_phrase(
+            idx=i, fr=fr, total=len(phrases),
+            provider=args.provider, api_key=api_key,
+            page=args.page, custom_query=args.query,
+            skip_existing=skip_existing, show=args.show,
+        ):
+            success += 1
+        time.sleep(DELAY_BETWEEN_REQUESTS)
+
+    print(f"Termine : {success}/{len(phrases)} image(s) telechargee(s).")
     return 0
 
 
