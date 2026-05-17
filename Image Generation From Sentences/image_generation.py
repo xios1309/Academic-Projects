@@ -1,18 +1,25 @@
 """
-Image Generation From Sentences (Unsplash / Pexels)
-====================================================
+Image Generation From Sentences (Unsplash / Pexels / Pollinations)
+==================================================================
 
 Pour chaque phrase en francais :
   1. Traduit la phrase en anglais
-  2. Extrait les mots-cles principaux
-  3. Telecharge une photo via Unsplash ou Pexels (API officielle)
-  4. Sauvegarde l'image dans `outputs/`
+  2. Telecharge ou GENERE une image
+  3. Sauvegarde dans `outputs/`
 
-Cle API gratuite requise (2 minutes d'inscription) :
-  - Unsplash : https://unsplash.com/developers   (50 req/h)
-  - Pexels   : https://www.pexels.com/api/       (200 req/h)
+Trois fournisseurs supportes :
 
-Fournir la cle :
+  --provider unsplash      Photos reelles (banque d'images)
+                           Cle gratuite : https://unsplash.com/developers (50/h)
+
+  --provider pexels        Photos reelles (banque d'images)
+                           Cle gratuite : https://www.pexels.com/api/ (200/h)
+
+  --provider pollinations  Images GENEREES par IA (FLUX)
+                           AUCUNE CLE REQUISE.
+                           Recommande pour phrases abstraites ou figurees.
+
+Fournir la cle (Unsplash / Pexels uniquement) :
   set UNSPLASH_ACCESS_KEY=ta_cle    (ou PEXELS_API_KEY)
   ou : --api-key ta_cle
 
@@ -23,29 +30,34 @@ USAGES COURANTS
 ---------------
 
   # Telecharger toutes les phrases (saute celles deja faites)
-  python image_generation.py
+  python image_generation.py --provider pollinations
 
   # Forcer le re-telechargement de TOUT
   python image_generation.py --force
 
-  # Re-generer UNIQUEMENT la phrase n.4 avec une autre photo
-  python image_generation.py --phrase 4 --page 2
+  # Re-generer UNIQUEMENT la phrase n.4
+  python image_generation.py --phrase 4
 
-  # Re-generer la 4 avec mes propres mots-cles
+  # Avec Pollinations, --seed change l'image (different de --page)
+  python image_generation.py --phrase 4 --provider pollinations --seed 42
+
+  # Avec Unsplash/Pexels, --page choisit la 2eme photo, la 3eme, etc.
+  python image_generation.py --phrase 4 --provider unsplash --page 2
+
+  # Re-generer avec mes propres mots
   python image_generation.py --phrase 4 --query "old library books"
 
   # Lister les phrases avec leur numero
   python image_generation.py --list
-
-  # Changer de fournisseur
-  python image_generation.py --provider pexels
 """
 
 import argparse
 import os
+import random
 import re
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 import requests
@@ -139,8 +151,9 @@ def slugify(text: str, max_len: int = 60) -> str:
     return text[:max_len] or "image"
 
 
-def output_path_for(idx: int, fr: str) -> Path:
-    return OUTPUT_DIR / f"{idx:02d}_{slugify(fr)}.jpg"
+def output_path_for(idx: int, fr: str, provider: str = "") -> Path:
+    prefix = f"{idx:02d}_{provider}_" if provider else f"{idx:02d}_"
+    return OUTPUT_DIR / f"{prefix}{slugify(fr)}.jpg"
 
 
 # ---------------------------------------------------------------------------
@@ -222,12 +235,56 @@ def download_one(
     provider: str,
     api_key: str,
     page: int = 1,
+    seed: int = None,
 ) -> Path:
     if provider == "unsplash":
         return download_from_unsplash(query, output_path, api_key, page=page)
     if provider == "pexels":
         return download_from_pexels(query, output_path, api_key, page=page)
+    if provider == "pollinations":
+        return generate_from_pollinations(query, output_path, seed=seed)
     raise ValueError(f"Fournisseur inconnu : {provider}")
+
+
+# ---------------------------------------------------------------------------
+# Fournisseur 3 : Pollinations.ai (IA generative, sans cle)
+# ---------------------------------------------------------------------------
+
+def generate_from_pollinations(
+    prompt: str,
+    output_path: Path,
+    seed: int = None,
+    width: int = 1024,
+    height: int = 768,
+    model: str = "flux",
+    timeout: int = 180,
+) -> Path:
+    """Genere une image via Pollinations.ai (aucune cle API requise).
+
+    `seed` est l'equivalent de `page` pour les fournisseurs photo : pour
+    obtenir une image differente sur le meme prompt, change la seed.
+    """
+    if seed is None:
+        seed = random.randint(1, 2**31 - 1)
+
+    encoded = urllib.parse.quote(prompt)
+    url = (
+        f"https://image.pollinations.ai/prompt/{encoded}"
+        f"?width={width}&height={height}&model={model}"
+        f"&seed={seed}&nologo=true"
+    )
+
+    r = requests.get(url, timeout=timeout)
+    r.raise_for_status()
+
+    if not r.content or len(r.content) < 1000:
+        raise RuntimeError("Reponse Pollinations vide ou trop petite.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "wb") as f:
+        f.write(r.content)
+    print(f"    Image generee par IA (Pollinations FLUX, seed={seed})")
+    return output_path
 
 
 # ---------------------------------------------------------------------------
@@ -241,12 +298,13 @@ def process_one_phrase(
     provider: str,
     api_key: str,
     page: int = 1,
+    seed: int = None,
     custom_query: str = "",
     skip_existing: bool = False,
     show: bool = False,
 ) -> bool:
     """Traite une seule phrase. Retourne True si telechargee."""
-    output_path = output_path_for(idx, fr)
+    output_path = output_path_for(idx, fr, provider)
     print(f"[{idx}/{total}] {fr}")
 
     if skip_existing and output_path.exists():
@@ -254,18 +312,25 @@ def process_one_phrase(
         print(f"    (--force pour re-telecharger)\n")
         return False
 
+    # Construction du prompt / requete
     if custom_query:
         query = custom_query
         print(f"    Requete personnalisee : {query}")
     else:
         en = translate_fr_to_en(fr)
-        keywords = extract_keywords(en)
-        query = " ".join(keywords) if keywords else en
-        print(f"    Prompt EN : {en}")
-        print(f"    Requete   : {query}")
+        if provider == "pollinations":
+            # Pour l'IA, on garde la PHRASE COMPLETE traduite : c'est un
+            # prompt descriptif, pas une simple recherche par mots-cles.
+            query = en
+            print(f"    Prompt EN : {en}")
+        else:
+            keywords = extract_keywords(en)
+            query = " ".join(keywords) if keywords else en
+            print(f"    Prompt EN : {en}")
+            print(f"    Requete   : {query}")
 
     try:
-        download_one(query, output_path, provider, api_key, page=page)
+        download_one(query, output_path, provider, api_key, page=page, seed=seed)
         print(f"    Sauvegardee : {output_path}\n")
         if show:
             try:
@@ -306,10 +371,10 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--provider", "-p",
-        choices=["unsplash", "pexels"], default="unsplash",
-        help="Source des images (defaut : unsplash)",
+        choices=["unsplash", "pexels", "pollinations"], default="pollinations",
+        help="Source des images (defaut : pollinations - IA, sans cle)",
     )
-    p.add_argument("--api-key", default="", help="Cle API (sinon variable d'env)")
+    p.add_argument("--api-key", default="", help="Cle API (Unsplash/Pexels uniquement)")
 
     # Selection / regeneration
     p.add_argument(
@@ -320,8 +385,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--page",
         type=int, default=1,
-        help="Numero de la photo a recuperer (defaut 1). "
-             "Augmente pour obtenir une photo differente sur la meme requete.",
+        help="[Unsplash/Pexels] N-ieme photo a recuperer pour la meme requete (defaut 1).",
+    )
+    p.add_argument(
+        "--seed",
+        type=int, default=None,
+        help="[Pollinations] graine de l'IA, change pour obtenir une autre image. "
+             "Si non specifiee, une seed aleatoire est utilisee.",
     )
     p.add_argument(
         "--query", "-q",
@@ -343,6 +413,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_api_key(provider: str, cli_key: str) -> str:
+    if provider == "pollinations":
+        return ""  # pas de cle API
     if cli_key:
         return cli_key
     return os.environ.get(
@@ -373,14 +445,21 @@ def main() -> int:
     if args.list:
         print("Phrases disponibles :")
         for i, p in enumerate(phrases, start=1):
-            path = output_path_for(i, p)
-            mark = "[OK]" if path.exists() else "[--]"
-            print(f"  {mark} {i:>2}. {p}")
-        print("\nUtilise --phrase N pour (re)generer la phrase numero N.")
+            marks = []
+            for prov in ("pollinations", "unsplash", "pexels"):
+                path = output_path_for(i, p, prov)
+                if path.exists():
+                    marks.append(prov[0].upper())  # P, U, X
+                else:
+                    marks.append("-")
+            status = "".join(marks)  # ex: "P--" ou "PU-" ou "PUX"
+            print(f"  [{status}] {i:>2}. {p}")
+        print("\n  Legende : P=pollinations, U=unsplash, X=pexels")
+        print("  Utilise --phrase N pour (re)generer la phrase numero N.")
         return 0
 
     api_key = resolve_api_key(args.provider, args.api_key)
-    if not api_key:
+    if args.provider in ("unsplash", "pexels") and not api_key:
         env_var = "UNSPLASH_ACCESS_KEY" if args.provider == "unsplash" else "PEXELS_API_KEY"
         signup = ("https://unsplash.com/developers"
                   if args.provider == "unsplash"
@@ -389,6 +468,7 @@ def main() -> int:
         print(f"  1. Inscription gratuite : {signup}")
         print(f"  2. set {env_var}=ta_cle  (puis relancer)")
         print(f"     OU : --api-key ta_cle")
+        print(f"  Astuce : --provider pollinations ne necessite aucune cle.")
         return 1
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -407,7 +487,7 @@ def main() -> int:
         ok = process_one_phrase(
             idx=idx, fr=fr, total=len(phrases),
             provider=args.provider, api_key=api_key,
-            page=args.page, custom_query=args.query,
+            page=args.page, seed=args.seed, custom_query=args.query,
             skip_existing=False, show=args.show,
         )
         print(f"Termine : {'1' if ok else '0'}/1 image telechargee.")
@@ -423,7 +503,7 @@ def main() -> int:
         if process_one_phrase(
             idx=i, fr=fr, total=len(phrases),
             provider=args.provider, api_key=api_key,
-            page=args.page, custom_query=args.query,
+            page=args.page, seed=args.seed, custom_query=args.query,
             skip_existing=skip_existing, show=args.show,
         ):
             success += 1
