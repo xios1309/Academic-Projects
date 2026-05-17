@@ -151,8 +151,9 @@ def slugify(text: str, max_len: int = 60) -> str:
     return text[:max_len] or "image"
 
 
-def output_path_for(idx: int, fr: str) -> Path:
-    return OUTPUT_DIR / f"{idx:02d}_{slugify(fr)}.jpg"
+def output_path_for(idx: int, fr: str, provider: str = "") -> Path:
+    prefix = f"{idx:02d}_{provider}_" if provider else f"{idx:02d}_"
+    return OUTPUT_DIR / f"{prefix}{slugify(fr)}.jpg"
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +304,7 @@ def process_one_phrase(
     show: bool = False,
 ) -> bool:
     """Traite une seule phrase. Retourne True si telechargee."""
-    output_path = output_path_for(idx, fr)
+    output_path = output_path_for(idx, fr, provider)
     print(f"[{idx}/{total}] {fr}")
 
     if skip_existing and output_path.exists():
@@ -444,10 +445,17 @@ def main() -> int:
     if args.list:
         print("Phrases disponibles :")
         for i, p in enumerate(phrases, start=1):
-            path = output_path_for(i, p)
-            mark = "[OK]" if path.exists() else "[--]"
-            print(f"  {mark} {i:>2}. {p}")
-        print("\nUtilise --phrase N pour (re)generer la phrase numero N.")
+            marks = []
+            for prov in ("pollinations", "unsplash", "pexels"):
+                path = output_path_for(i, p, prov)
+                if path.exists():
+                    marks.append(prov[0].upper())  # P, U, X
+                else:
+                    marks.append("-")
+            status = "".join(marks)  # ex: "P--" ou "PU-" ou "PUX"
+            print(f"  [{status}] {i:>2}. {p}")
+        print("\n  Legende : P=pollinations, U=unsplash, X=pexels")
+        print("  Utilise --phrase N pour (re)generer la phrase numero N.")
         return 0
 
     api_key = resolve_api_key(args.provider, args.api_key)
