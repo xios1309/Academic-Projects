@@ -317,17 +317,8 @@ def process_one_phrase(
         query = custom_query
         print(f"    Requete personnalisee : {query}")
     else:
-        en = translate_fr_to_en(fr)
-        if provider == "pollinations":
-            # Pour l'IA, on garde la PHRASE COMPLETE traduite : c'est un
-            # prompt descriptif, pas une simple recherche par mots-cles.
-            query = en
-            print(f"    Prompt EN : {en}")
-        else:
-            keywords = extract_keywords(en)
-            query = " ".join(keywords) if keywords else en
-            print(f"    Prompt EN : {en}")
-            print(f"    Requete   : {query}")
+        query = translate_fr_to_en(fr)
+        print(f"    Requete EN : {query}")
 
     try:
         download_one(query, output_path, provider, api_key, page=page, seed=seed)
